@@ -3,6 +3,8 @@ require('dotenv').config();
 const app=require('./app');
 const connectMongoDB=require('./config/mongo');
 const connectRedis=require('./config/redis');
+// const nextCounter=require('./utils/nextCounter');
+// const generateCode=require('./utils/generateCode');
 
 const PORT=Number(process.env.PORT) || 3000;
 
@@ -10,7 +12,7 @@ const PORT=Number(process.env.PORT) || 3000;
 async function startServer() {
   try {
     await connectMongoDB();
-    await connectRedis();
+    const redisclient=await connectRedis();
 
     app.listen(PORT, () => {
       console.log(`Server is running at http://localhost:${PORT}`);
@@ -20,6 +22,7 @@ async function startServer() {
     process.exit(1);
   }
 }
+
 
 
 
