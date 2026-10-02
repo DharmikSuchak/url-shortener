@@ -1,6 +1,6 @@
 # URL shortener
 
-React and JavaScript frontend; JavaScript/CommonJS, Express, Mongoose, and Redis backend.
+A URL shortener built with the MERN stack (MongoDB, Express, React, and Node.js), with Redis for code generation, caching, and rate limiting.
 
 ## Design and assignment answers
 
@@ -102,8 +102,9 @@ One million per day averages roughly 12 redirects per second; peak traffic matte
 
 ### 6. AI tools
 
-I chose the initial architecture and code-generation approach and wrote the early backend foundation. While preparing for a weekend hackathon, I used Codex to accelerate the React frontend and later backend implementation, tests, and documentation. This README describes the resulting design and its limitations.
+I set up the project and initial Express backend, configured MongoDB and Redis with Docker Compose, and wrote the database connections and URL schema. I also implemented the seven-character Base62 encoder, Redis-backed counter, code-generation utility, and initial URL-creation endpoint.
 
+While preparing for a weekend hackathon, I used Codex to help complete the React frontend, extend and refine the backend, add tests, and improve the documentation. I reviewed and tested the resulting application, this README describes its design and limitations.
 ## API
 
 Errors use JSON `{ "error": "message" }`, except health readiness responses.
