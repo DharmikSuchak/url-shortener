@@ -1,6 +1,7 @@
+const COUNTER_KEY=process.env.URL_COUNTER_KEY || "short-url:counter";
+
 async function nextCounter(client) {
-     const nextValue = await client.incr("short-url:counter");
-     return nextValue;
+    return client.incr(COUNTER_KEY);
 }
 
 module.exports=nextCounter;

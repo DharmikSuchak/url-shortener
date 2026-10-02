@@ -1,16 +1,15 @@
 const mongoose=require('mongoose');
 
 async function connectMongoDB() {
-    const MONGODB_URI= process.env.MONGODB_URI;
+    const mongoUri=process.env.MONGODB_URI;
 
-    if(!MONGODB_URI){
-        throw new Error ("Mongodb_uri is not defined");
+    if(!mongoUri){
+        throw new Error("MONGODB_URI is required");
     }
 
-    await mongoose.connect(MONGODB_URI);
+    await mongoose.connect(mongoUri);
 
     console.log("MongoDB connected");
 }
 
 module.exports=connectMongoDB;
-

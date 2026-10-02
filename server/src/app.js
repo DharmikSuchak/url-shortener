@@ -1,8 +1,17 @@
 const express=require('express');
 const {createUrl,isCodeConflict}=require('./utils/createUrl');
 const {parseUrlInput,isValidCode}=require('./utils/urlValidation');
+const {queueClick}=require('./analytics/clickStream');
+const getClickStats=require('./analytics/clickStats');
 const Url=require('./models/url');
+const redirectSettings=require('./config/redirectSettings');
+const {createRateLimiter}=require('./middleware/createRateLimiter');
+const {resolveUrl,deleteCachedUrl}=require('./utils/redirectCache');
 const app=express();
+app.locals.redirectSettings=redirectSettings;
+app.set("trust proxy",redirectSettings.proxyTrust);
+// Count malformed creation requests too, before JSON parsing can reject them.
+app.post('/api/urls',createRateLimiter);
 app.use(express.json());
 
 function parsePaginationNumber(value,defaultValue,maximum) {
@@ -22,12 +31,17 @@ function urlResponse(savedUrl,baseUrl) {
     return {
         code:savedUrl.code,
         shortUrl:`${baseUrl}/${savedUrl.code}`,
+        url:savedUrl.originalUrl,
         originalUrl:savedUrl.originalUrl,
         expiresAt:savedUrl.expiresAt
     };
 }
 
 app.get('/health',(req,res)=>{
+    if(Url.db.readyState!==1 || !req.app.locals.redisClient?.isReady){
+        return res.status(503).json({status: "unavailable"});
+    }
+
     return res.json({status: "ok"});
 });
 
@@ -98,7 +112,7 @@ app.delete('/api/urls/:code',async (req,res)=>{
     }
 
     try{
-        const deletedUrl=await Url.findOneAndDelete({code:req.params.code});
+        const deletedUrl=await deleteCachedUrl(req.app.locals.redisClient,req.params.code,req.app.locals.redirectSettings);
 
         if(!deletedUrl){
             return res.status(404).json({error: "Short URL not found"});
@@ -108,7 +122,32 @@ app.delete('/api/urls/:code',async (req,res)=>{
     }
     catch(error){
         console.error(error);
+        if(error.code==="CACHE_INVALIDATION_FAILED"){
+            return res.status(503).json({error:error.message});
+        }
         return res.status(500).json({error: "Could not delete short URL"});
+    }
+});
+
+app.get('/api/urls/:code/stats',async (req,res)=>{
+    try{
+        const savedUrl=await Url.findOne({code:req.params.code});
+        if(!savedUrl){
+            return res.status(404).json({error: "Short URL not found"});
+        }
+
+        const stats=await getClickStats(savedUrl._id);
+        return res.json({
+            code:savedUrl.code,
+            url:savedUrl.originalUrl,
+            originalUrl:savedUrl.originalUrl,
+            createdAt:savedUrl.createdAt,
+            ...stats
+        });
+    }
+    catch(error){
+        console.error(error);
+        return res.status(500).json({error: "Could not load click statistics"});
     }
 });
 
@@ -118,7 +157,7 @@ app.use('/api',(req,res)=>{
 
 app.get('/:code',async (req,res)=>{
     try{
-        const savedUrl=await Url.findOne({code:req.params.code});
+        const savedUrl=await resolveUrl(req.app.locals.redisClient,req.params.code,req.app.locals.redirectSettings);
 
         if(!savedUrl){
             return res.status(404).json({error: "Short URL not found"});
@@ -126,6 +165,19 @@ app.get('/:code',async (req,res)=>{
 
         if(savedUrl.expiresAt && savedUrl.expiresAt.getTime()<=Date.now()){
             return res.status(410).json({error: "Short URL has expired"});
+        }
+
+        try{
+            await queueClick(req.app.locals.redisClient,{
+                urlId:savedUrl._id,
+                code:savedUrl.code,
+                userAgent:req.get("user-agent") || "",
+                referrer:req.get("referer") || ""
+            });
+        }
+        catch(error){
+            console.error("Could not queue click analytics:",error.message);
+            return res.status(503).json({error: "Click analytics is unavailable; please try again"});
         }
 
         return res.redirect(302,savedUrl.originalUrl);

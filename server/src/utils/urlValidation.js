@@ -2,9 +2,9 @@ function isValidCode(code) {
     return typeof code === "string" && /^[A-Za-z0-9_-]{3,64}$/.test(code);
 }
 
-function parseOriginalUrl(originalUrl) {
+function parseOriginalUrl(originalUrl,field) {
     if(typeof originalUrl !== "string" || !originalUrl.trim()){
-        throw new Error("originalUrl is required");
+        throw new Error(`${field} must be a non-empty string`);
     }
 
     let parsedUrl;
@@ -12,7 +12,7 @@ function parseOriginalUrl(originalUrl) {
         parsedUrl=new URL(originalUrl);
     }
     catch{
-        throw new Error("Invalid Url");
+        throw new Error(`${field} must be a valid URL`);
     }
 
     if(!["http:","https:"].includes(parsedUrl.protocol)){
@@ -20,6 +20,19 @@ function parseOriginalUrl(originalUrl) {
     }
 
     return parsedUrl.href;
+}
+
+function parseDestination(body) {
+    const url=body?.url===undefined ? undefined : parseOriginalUrl(body.url,"url");
+    const originalUrl=body?.originalUrl===undefined ? undefined : parseOriginalUrl(body.originalUrl,"originalUrl");
+    if(url && originalUrl && url!==originalUrl){
+        throw new Error("url and originalUrl must identify the same destination");
+    }
+    if(!url && !originalUrl){
+        throw new Error("url is required (originalUrl is also accepted)");
+    }
+
+    return url || originalUrl;
 }
 
 function parseExpiry(value) {
@@ -45,11 +58,11 @@ function parseAlias(alias) {
     if(alias===undefined){
         return undefined;
     }
-    if(!isValidCode(alias)){
-        throw new Error("alias must contain 3 to 64 letters, digits, hyphens, or underscores");
-    }
-    if(["api","health"].includes(alias.toLowerCase())){
+    if(typeof alias === "string" && ["api","health"].includes(alias.toLowerCase())){
         throw new Error("alias is reserved");
+    }
+    if(typeof alias !== "string" || !/^[A-Za-z0-9_-]{6,7}$/.test(alias)){
+        throw new Error("Custom alias must be 6–7 characters (maximum 7). Use only letters, numbers, hyphens, or underscores.");
     }
 
     return alias;
@@ -57,7 +70,7 @@ function parseAlias(alias) {
 
 function parseUrlInput(body) {
     return {
-        originalUrl:parseOriginalUrl(body?.originalUrl),
+        originalUrl:parseDestination(body),
         expiresAt:parseExpiry(body?.expiresAt),
         alias:parseAlias(body?.alias)
     };

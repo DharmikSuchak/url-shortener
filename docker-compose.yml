@@ -1,11 +1,42 @@
+x-server: &server
+  build: ./server
+  init: true
+  restart: unless-stopped
+  environment:
+    NODE_ENV: production
+    PORT: 3000
+    BASE_URL: ${BASE_URL:-http://localhost:8080}
+    MONGODB_URI: ${MONGODB_URI:-mongodb://mongo:27017/url_shortener}
+    REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+    URL_COUNTER_KEY: ${URL_COUNTER_KEY:-short-url:counter}
+    CLICK_STREAM: ${CLICK_STREAM:-short-url:clicks}
+    CLICK_GROUP: ${CLICK_GROUP:-click-persistence}
+    REDIRECT_CACHE_PREFIX: ${REDIRECT_CACHE_PREFIX:-short-url:redirect}
+    REDIRECT_CACHE_TTL_SECONDS: ${REDIRECT_CACHE_TTL_SECONDS:-300}
+    CREATE_RATE_PREFIX: ${CREATE_RATE_PREFIX:-short-url:rate:create}
+    CREATE_RATE_LIMIT: ${CREATE_RATE_LIMIT:-20}
+    CREATE_RATE_WINDOW_SECONDS: ${CREATE_RATE_WINDOW_SECONDS:-60}
+    TRUST_PROXY: ${TRUST_PROXY:-false}
+  depends_on:
+    mongo:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+
 services:
   mongo:
     image: mongo:7.0
     restart: unless-stopped
     ports:
       - "27017:27017"
-    volumes: 
+    volumes:
       - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "quit(db.adminCommand({ping:1}).ok ? 0 : 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
 
   redis:
     image: redis:8-alpine
@@ -15,6 +46,40 @@ services:
       - "6379:6379"
     volumes:
       - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    <<: *server
+    ports:
+      - "${BACKEND_PORT:-3000}:3000"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/health').then(response=>process.exit(response.ok ? 0 : 1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  worker:
+    <<: *server
+    command: ["node", "src/worker.js"]
+
+  frontend:
+    build: ./client
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-8080}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--spider", "http://127.0.0.1/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
 volumes:
   mongo_data:
